@@ -156,6 +156,7 @@ if __name__ == '__main__':
     parser.add_argument('--block_size', default=128, type=int)
     parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--num_workers', default=0, type=int)
+    parser.add_argument('--compile', default=0, type=int)
     args = parser.parse_args()
 
     if not os.path.exists("input.txt"):
@@ -174,6 +175,9 @@ if __name__ == '__main__':
             n_embd=args.n_embd,
             learning_rate=args.learning_rate
         )
+
+    if args.compile:
+        model = torch.compile(model)
 
     lr_decay = LearningRateDecayCallback(
         learning_rate=6e-4,
