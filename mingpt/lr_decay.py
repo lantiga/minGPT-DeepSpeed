@@ -1,5 +1,8 @@
 import math
-import pytorch_lightning as pl
+try:
+    import lightning.pytorch as pl
+except:
+    import pytorch_lightning as pl
 
 
 class LearningRateDecayCallback(pl.Callback):
@@ -12,7 +15,7 @@ class LearningRateDecayCallback(pl.Callback):
         self.lr_decay = lr_decay
         self.warmup_tokens = warmup_tokens
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         optimizer = trainer.optimizers[0]
         _, y = batch
 

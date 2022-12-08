@@ -1,8 +1,13 @@
 import time
 
 import torch
-from pytorch_lightning import Callback
-from pytorch_lightning.utilities import rank_zero_info
+
+try:
+    from lightning.pytorch import Callback
+    from lightning.pytorch.utilities import rank_zero_info
+except ImportError:
+    from pytorch_lightning import Callback
+    from pytorch_lightning.utilities import rank_zero_info
 
 
 class CUDACallback(Callback):

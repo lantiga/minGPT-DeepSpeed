@@ -1,21 +1,35 @@
-import os
 from argparse import ArgumentParser
-
-import numpy as np
-from pytorch_lightning import Trainer
-from pytorch_lightning import seed_everything
-from pytorch_lightning.strategies import DeepSpeedStrategy
-from pytorch_lightning.utilities import rank_zero_info
-from pytorch_lightning.utilities.meta import init_meta_context
-from torch.utils.data import Dataset, DataLoader
 import math
+import numpy as np
+import os
 
-import deepspeed
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
 from torch.nn import functional as F
+from torch.utils.data import Dataset, DataLoader
+
+try:
+    import lightning.pytorch as pl
+    import lightning.pytorch as pl
+    from lightning import Trainer
+    from lightning import seed_everything
+    from lightning.pytorch.strategies import DeepSpeedStrategy
+    from lightning.pytorch.utilities import rank_zero_info
+    from lightning.pytorch.utilities.meta import init_meta_context
+except:
+    import pytorch_lightning as pl
+    from pytorch_lightning import Trainer
+    from pytorch_lightning import seed_everything
+    from pytorch_lightning.strategies import DeepSpeedStrategy
+    from pytorch_lightning.utilities import rank_zero_info
+    from pytorch_lightning.utilities.meta import init_meta_context
+
+try:
+    import deepspeed
+    from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
+except:
+    pass
+
 from mingpt.callback import CUDACallback
 from mingpt.lr_decay import LearningRateDecayCallback
 from mingpt.block import Block
@@ -84,11 +98,20 @@ class GPT(pl.LightningModule):
             {"params": params_decay, "weight_decay": self.hparams.weight_decay},
             {"params": params_nodecay, "weight_decay": 0.0},
         ]
-        # todo: need to enable deepspeed cpu adam only if offloading
 
         if self.deepspeed_offload:
+            # todo: need to enable deepspeed cpu adam only if offloading
             return DeepSpeedCPUAdam(optim_groups, lr=self.hparams.learning_rate, betas=self.hparams.betas)
-        return FusedAdam(optim_groups, lr=self.hparams.learning_rate, betas=self.hparams.betas)
+
+        if self.deepspeed:
+            return FusedAdam(optim_groups, lr=self.hparams.learning_rate, betas=self.hparams.betas)
+
+        return torch.optim.Adam(optim_groups, lr=self.hparams.learning_rate, betas=self.hparams.betas)
+
+    @property
+    def deepspeed(self) -> bool:
+        strategy = self.trainer.strategy
+        return isinstance(strategy, DeepSpeedStrategy)
 
     @property
     def deepspeed_offload(self) -> bool:
@@ -106,8 +129,9 @@ class GPT(pl.LightningModule):
         token_embeddings = self.tok_emb(idx) # each index maps to a (learnable) vector
         position_embeddings = self.pos_emb[:, :t, :] # each position maps to a (learnable) vector
         x = self.drop(token_embeddings + position_embeddings)
-        for block in self.blocks:
-            x = deepspeed.checkpointing.checkpoint(block, x)
+        if self.deepspeed:
+            for block in self.blocks:
+                x = deepspeed.checkpointing.checkpoint(block, x)
         x = self.ln_f(x)
         logits = self.head(x)
         return logits
@@ -157,11 +181,15 @@ if __name__ == '__main__':
         final_tokens=2 * len(train_dataset) * args.block_size
     )
 
+    callbacks = [lr_decay]
+    if torch.cuda.is_available():
+        callbacks += CUDACallback()
+
     trainer = Trainer.from_argparse_args(
         args,
         max_epochs=10,
         gradient_clip_val=1.0,
-        callbacks=[lr_decay, CUDACallback()],
+        callbacks=callbacks,
         precision=16,
     )
     trainer.fit(model, train_loader)
