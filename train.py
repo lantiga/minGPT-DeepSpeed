@@ -183,7 +183,7 @@ if __name__ == '__main__':
 
     callbacks = [lr_decay]
     if torch.cuda.is_available():
-        callbacks += CUDACallback()
+        callbacks.append(CUDACallback())
 
     trainer = Trainer.from_argparse_args(
         args,
